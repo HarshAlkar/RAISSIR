@@ -70,11 +70,18 @@ class AuthService {
   // ── Token verification (startup check) ───────────────────────────────────
 
   /// Returns true if the stored token is still valid on the backend.
-  /// Returns false on invalid/expired token (and clears storage).
-  /// Returns false on network error WITHOUT clearing storage (offline tolerance).
   Future<bool> verifyToken() async {
+    final result = await verifyTokenAndGetRole();
+    return result != null;
+  }
+
+  /// Verifies token AND returns the role from the backend response.
+  /// Returns role string ("student"/"mentor") on success.
+  /// Returns null on invalid token (also clears storage).
+  /// On network error: returns locally stored role (offline tolerance, no logout).
+  Future<String?> verifyTokenAndGetRole() async {
     final token = await getToken();
-    if (token == null || token.isEmpty) return false;
+    if (token == null || token.isEmpty) return null;
 
     try {
       final response = await http
@@ -89,14 +96,22 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
-        return decoded['valid'] == true;
+        if (decoded['valid'] == true) {
+          // Read the role from the backend response (trusted, always lowercase)
+          final role = (decoded['user']?['role'] ?? '')
+              .toString()
+              .toLowerCase()
+              .trim();
+          return role.isEmpty ? null : role;
+        }
       }
-      // Token invalid or expired — clear stored credentials
+      // Token invalid / expired → clear everything
       await logout();
-      return false;
+      return null;
     } catch (_) {
-      // Network error / timeout: do NOT log out (offline tolerance)
-      return false;
+      // Network error / timeout: do NOT clear credentials
+      // Fall back to locally stored role so offline navigation still works
+      return await getRole();
     }
   }
 

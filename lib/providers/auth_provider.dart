@@ -16,40 +16,57 @@ class AuthProvider with ChangeNotifier {
 
   // ── Login ─────────────────────────────────────────────────────────────────
 
-  /// Returns the role string directly on success so caller doesn't need to
-  /// read [role] asynchronously after this call returns.
+  /// Calls the backend login API.
+  /// Returns the **role string** ("student", "mentor", "admin") on success.
+  /// Returns **null** on failure, and sets [error].
   Future<String?> login(String email, String password) async {
-    _setLoading(true);
+    _isLoading = true;
     _error = '';
     notifyListeners();
 
     try {
       final response = await _authService.login(email, password);
 
-      final token = response['token']?.toString();
-      // Normalize role to lowercase to avoid 'Mentor' vs 'mentor' mismatch
-      final role = (response['user']?['role'] ?? '')
+      // Extract and normalize values immediately from the response map
+      final String? rawToken = response['token']?.toString();
+      final String rawRole = (response['user']?['role'] ?? '')
           .toString()
           .toLowerCase()
           .trim();
+      final String userName = (response['user']?['name'] ?? '').toString();
 
-      if (token == null || token.isEmpty) {
-        _error = 'Login failed: no token received';
-        _setLoading(false);
+      if (rawToken == null || rawToken.isEmpty) {
+        _error = 'Server did not return a token. Please try again.';
+        _isLoading = false;
+        notifyListeners();
         return null;
       }
 
-      _token = token;
-      _role = role;
+      if (rawRole.isEmpty) {
+        _error = 'Server did not return a role. Please try again.';
+        _isLoading = false;
+        notifyListeners();
+        return null;
+      }
 
-      await _authService.saveToken(token);
-      await _authService.saveRole(role);
+      // Commit to in-memory state BEFORE persistence
+      _token = rawToken;
+      _role = rawRole;
 
-      _setLoading(false);
-      return role; // ← return role directly to avoid race condition
+      // Persist to SharedPreferences
+      await _authService.saveToken(rawToken);
+      await _authService.saveRole(rawRole);
+
+      _isLoading = false;
+      notifyListeners();
+
+      debugPrint('✅ Login success — name: $userName, role: $_role');
+      return rawRole; // return directly so caller doesn't read stale state
     } catch (e) {
       _error = e.toString().replaceAll('Exception: ', '');
-      _setLoading(false);
+      _isLoading = false;
+      notifyListeners();
+      debugPrint('❌ Login error: $_error');
       return null;
     }
   }
@@ -57,43 +74,61 @@ class AuthProvider with ChangeNotifier {
   // ── Register ──────────────────────────────────────────────────────────────
 
   Future<bool> register(Map<String, dynamic> userData) async {
-    _setLoading(true);
+    _isLoading = true;
     _error = '';
     notifyListeners();
 
     try {
       await _authService.register(userData);
-      _setLoading(false);
+      _isLoading = false;
+      notifyListeners();
       return true;
     } catch (e) {
       _error = e.toString().replaceAll('Exception: ', '');
-      _setLoading(false);
+      _isLoading = false;
+      notifyListeners();
       return false;
     }
   }
 
-  // ── Token check (startup) ─────────────────────────────────────────────────
+  // ── Startup token check ───────────────────────────────────────────────────
 
+  /// Reads stored token + role from device storage (no network).
   Future<void> checkToken() async {
     _token = await _authService.getToken();
     _role = await _authService.getRole();
     notifyListeners();
   }
 
-  /// Verifies the stored token against the backend.
-  /// Returns true if valid, false if invalid/expired (and clears local state).
+  /// Verifies the stored token with the backend.
+  /// On success:  updates [role] from the *backend response* (not just local storage).
+  /// On failure:  clears all local auth state.
   Future<bool> verifyTokenWithBackend() async {
     _token = await _authService.getToken();
     _role = await _authService.getRole();
-    if (_token == null || _token!.isEmpty) return false;
 
-    final valid = await _authService.verifyToken();
-    if (!valid) {
+    if (_token == null || _token!.isEmpty) {
+      debugPrint('🔑 No stored token — going to login');
+      return false;
+    }
+
+    final result = await _authService.verifyTokenAndGetRole();
+
+    if (result == null) {
+      // Token invalid / expired / network error cleared it
       _token = null;
       _role = null;
       notifyListeners();
+      debugPrint('🔑 Token invalid — clearing state');
+      return false;
     }
-    return valid;
+
+    // Trust the role from backend (overrides any stale SharedPreferences value)
+    _role = result;
+    await _authService.saveRole(result);
+    notifyListeners();
+    debugPrint('🔑 Token valid — role: $_role');
+    return true;
   }
 
   // ── Logout ────────────────────────────────────────────────────────────────
@@ -102,13 +137,8 @@ class AuthProvider with ChangeNotifier {
     await _authService.logout();
     _token = null;
     _role = null;
+    _error = '';
     notifyListeners();
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  void _setLoading(bool value) {
-    _isLoading = value;
-    notifyListeners();
+    debugPrint('👋 Logged out');
   }
 }
