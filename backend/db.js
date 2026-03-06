@@ -78,12 +78,12 @@ async function ensureTablesExist() {
         CREATE TABLE IF NOT EXISTS certificates (
             id                   SERIAL PRIMARY KEY,
             student_id           INTEGER  REFERENCES users(id) ON DELETE CASCADE,
-            event_name           VARCHAR(255) NOT NULL,
-            organizing_institute VARCHAR(255) NOT NULL,
+            event_name           VARCHAR(500) NOT NULL,
+            organizing_institute VARCHAR(500) NOT NULL,
             event_date           DATE,
-            participation_type   VARCHAR(50),
+            participation_type   VARCHAR(100),
             certificate_type     VARCHAR(100),
-            certificate_file     VARCHAR(255),
+            certificate_file     TEXT,
             description          TEXT,
             status               VARCHAR(50)  DEFAULT 'pending',
             mentor_remark        TEXT,
@@ -96,19 +96,25 @@ async function ensureTablesExist() {
 
     // Safe migrations for existing tables
     const safeAddColumns = [
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS department   VARCHAR(100)`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id  VARCHAR(50)`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS department   VARCHAR(200)`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id  VARCHAR(100)`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS mentor_id    INTEGER`,
-        `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS participation_type VARCHAR(50)`,
+        `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS participation_type VARCHAR(100)`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS description         TEXT`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS certificate_type    VARCHAR(100)`,
-        `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS certificate_file    VARCHAR(255)`,
+        `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS certificate_file    TEXT`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS status              VARCHAR(50)`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS points              INTEGER`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS mentor_remark       TEXT`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS verified_by         INTEGER`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS verified_at         TIMESTAMP`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
+        // Fix existing too-small VARCHAR columns
+        `ALTER TABLE certificates ALTER COLUMN participation_type TYPE VARCHAR(100)`,
+        `ALTER TABLE certificates ALTER COLUMN certificate_type   TYPE VARCHAR(100)`,
+        `ALTER TABLE certificates ALTER COLUMN event_name         TYPE VARCHAR(500)`,
+        `ALTER TABLE certificates ALTER COLUMN organizing_institute TYPE VARCHAR(500)`,
+        `ALTER TABLE certificates ALTER COLUMN certificate_file   TYPE TEXT`,
     ];
 
     for (const sql of safeAddColumns) {
