@@ -1,0 +1,21 @@
+2026-03-07 01:52:47: [dotenv@17.3.1] injecting env (7) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+2026-03-07 01:52:47: [dotenv@17.3.1] injecting env (0) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+2026-03-07 01:52:47: PostgreSQL Connected
+2026-03-07 01:52:47: Server running on port 5000
+2026-03-07 02:17:57: [dotenv@17.3.1] injecting env (7) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+2026-03-07 02:17:57: [dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  override existing env vars with { override: true }
+2026-03-07 02:17:57: PostgreSQL Connected
+2026-03-07 02:17:57: Server running on port 5000
+2026-03-07 02:23:18: [dotenv@17.3.1] injecting env (7) from .env -- tip: ⚙️  override existing env vars with { override: true }
+2026-03-07 02:23:18: [dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+2026-03-07 02:23:18: PostgreSQL Connected
+2026-03-07 02:23:18: Server running on port 5000
+2026-03-07 02:29:34: [dotenv@17.3.1] injecting env (7) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+2026-03-07 02:29:34: [dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+2026-03-07 02:29:34: PostgreSQL Connected
+2026-03-07 02:29:34: Server running on port 5000
+2026-03-07 02:36:21: [dotenv@17.3.1] injecting env (7) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+2026-03-07 02:36:22: [dotenv@17.3.1] injecting env (0) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+2026-03-07 02:36:22: Using cloud PostgreSQL (DATABASE_URL)
+2026-03-07 02:36:27: PostgreSQL Connected
+2026-03-07 02:36:27: Server running on port 5000

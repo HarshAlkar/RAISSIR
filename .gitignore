@@ -1,45 +1,23 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
+# Backend
+backend/node_modules/
+backend/.env
+backend/uploads/
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Flutter build outputs
+build/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
+*.g.dart
 
-# Symbolication related
-app.*.symbols
+# IDE
+.idea/
+.vscode/
+*.iml
 
-# Obfuscation related
-app.*.map.json
+# PM2
+backend/ecosystem.config.js.bak
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# OS
+.DS_Store
+Thumbs.db
