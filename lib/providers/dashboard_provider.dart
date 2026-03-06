@@ -11,7 +11,7 @@ class DashboardProvider with ChangeNotifier {
   List<Certificate>? _recentCertificates;
 
   bool _isLoading = false;
-  String _error = "";
+  String _error = '';
   bool _isUnauthorized = false;
 
   StudentProfile? get profile => _profile;
@@ -23,18 +23,26 @@ class DashboardProvider with ChangeNotifier {
 
   Future<void> loadDashboardData() async {
     _isLoading = true;
-    _error = "";
+    _error = '';
     _isUnauthorized = false;
     notifyListeners();
 
     try {
-      final profileResult = await _apiService.fetchProfile();
-      final statsResult = await _apiService.fetchDashboardStats();
-      final certsResult = await _apiService.fetchRecentCertificates();
+      // Load profile and stats in parallel for speed
+      final results = await Future.wait([
+        _apiService.fetchProfile(),
+        _apiService.fetchDashboardStats(),
+      ]);
 
-      _profile = profileResult;
-      _stats = statsResult;
-      _recentCertificates = certsResult;
+      _profile = results[0] as StudentProfile;
+      _stats = results[1] as DashboardStats;
+
+      // Recent certificates is non-critical — load separately, don't fail dashboard
+      try {
+        _recentCertificates = await _apiService.fetchRecentCertificates();
+      } catch (_) {
+        _recentCertificates = [];
+      }
     } on UnauthorizedException catch (e) {
       _isUnauthorized = true;
       _error = e.message;
@@ -46,9 +54,20 @@ class DashboardProvider with ChangeNotifier {
       _profile = null;
       _stats = null;
       _recentCertificates = null;
+      debugPrint('DashboardProvider error: $_error');
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  void reset() {
+    _profile = null;
+    _stats = null;
+    _recentCertificates = null;
+    _error = '';
+    _isUnauthorized = false;
+    _isLoading = false;
+    notifyListeners();
   }
 }
