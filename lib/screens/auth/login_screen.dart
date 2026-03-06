@@ -28,21 +28,53 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    bool success = await authProvider.login(email, password);
 
-    if (success && mounted) {
-      final role = authProvider.role;
+    // login() now returns the actual role from backend directly
+    final role = await authProvider.login(email, password);
+
+    if (!mounted) return;
+
+    if (role != null) {
+      // ── Validate that UI tab matches actual DB role ──────────────────────
+      final expectedRole = _selectedRole
+          .toLowerCase(); // 'student', 'mentor', 'admin'
+      if (role != expectedRole &&
+          !(role == 'mentor' && expectedRole == 'admin')) {
+        // Mismatch: user selected wrong tab
+        await authProvider.logout(); // clear the token we just saved
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'This account is a ${role.toUpperCase()} account.\n'
+              'Please select the correct role tab.',
+            ),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+
+      // ── Navigate based on actual role from backend ───────────────────────
       if (role == 'student') {
         Navigator.pushReplacementNamed(context, '/student-dashboard');
       } else if (role == 'mentor') {
         Navigator.pushReplacementNamed(context, '/mentor-dashboard');
       } else {
-        Navigator.pushReplacementNamed(context, '/admin-dashboard');
+        Navigator.pushReplacementNamed(context, '/mentor-dashboard');
       }
-    } else if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(authProvider.error)));
+    } else {
+      // Login failed — show error from provider
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            authProvider.error.isNotEmpty
+                ? authProvider.error
+                : 'Login failed. Please check your credentials.',
+          ),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
     }
   }
 
