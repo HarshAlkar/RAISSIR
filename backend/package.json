@@ -1,0 +1,29 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "CertiTrack Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "pm2 startOrRestart ecosystem.config.js",
+    "run:node": "node server.js",
+    "dev": "nodemon server.js",
+    "pm2:start": "pm2 startOrRestart ecosystem.config.js",
+    "pm2:stop": "pm2 stop certitrack-backend",
+    "pm2:restart": "pm2 restart certitrack-backend",
+    "pm2:logs": "pm2 logs certitrack-backend",
+    "pm2:status": "pm2 status",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "pg": "^8.20.0"
+  }
+}
