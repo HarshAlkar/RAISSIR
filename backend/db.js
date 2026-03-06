@@ -66,7 +66,7 @@ async function ensureTablesExist() {
             email          VARCHAR(100)  UNIQUE NOT NULL,
             password       TEXT          NOT NULL,
             roll_number    VARCHAR(50),
-            role           VARCHAR(20)   NOT NULL DEFAULT 'student',
+            role           VARCHAR(50)   NOT NULL DEFAULT 'student',
             department     VARCHAR(100),
             employee_id    VARCHAR(50),
             mentor_id      INTEGER,
