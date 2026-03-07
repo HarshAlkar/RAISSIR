@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
@@ -19,272 +21,308 @@ class MentorApiService {
   }
 
   Future<MentorDashboardData> fetchDashboard() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/dashboard'),
-      headers: await getHeaders(),
-    );
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/dashboard'), headers: await getHeaders())
+          .timeout(const Duration(seconds: 15));
 
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      if (decoded is Map<String, dynamic>) {
-        return MentorDashboardData.fromJson(decoded);
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          return MentorDashboardData.fromJson(decoded);
+        }
+        throw Exception('Invalid dashboard response format');
+      } else if (response.statusCode == 401) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
       }
-      throw Exception('Invalid dashboard response');
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
+      throw Exception(
+        'Failed to load mentor dashboard (${response.statusCode})',
+      );
+    } on SocketException {
+      throw Exception('Network error: Unable to connect to mentor dashboard.');
+    } on TimeoutException {
+      throw Exception('Dashboard fetch timed out.');
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
     }
-
-    throw Exception('Failed to load mentor dashboard');
   }
 
   Future<MentorProfile> fetchMentorProfile() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/profile'),
-      headers: await getHeaders(),
-    );
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/profile'), headers: await getHeaders())
+          .timeout(const Duration(seconds: 15));
 
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      if (decoded is Map<String, dynamic>) {
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
         return MentorProfile.fromJson(decoded);
+      } else if (response.statusCode == 401) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
       }
-      throw Exception('Invalid profile response');
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
-    } else if (response.statusCode == 403) {
-      throw Exception(
-        'Access denied. Please logout and login again as mentor.',
-      );
-    } else if (response.statusCode == 404) {
-      throw Exception('Mentor profile not found in database.');
-    } else {
-      // Show the actual error from server for debugging
-      String msg = 'Server error (${response.statusCode})';
-      try {
-        final body = json.decode(response.body);
-        if (body is Map && body['msg'] != null) msg = body['msg'].toString();
-        if (body is Map && body['error'] != null)
-          msg = body['error'].toString();
-      } catch (_) {}
+      final msg = _extractMsg(response.body) ?? 'Failed to load mentor profile';
       throw Exception(msg);
+    } on SocketException {
+      throw Exception('Network error: Cannot reach server for profile.');
+    } on TimeoutException {
+      throw Exception('Profile load timed out.');
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
     }
   }
 
   Future<List<MentorActivityItem>> fetchActivity() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/activity'),
-      headers: await getHeaders(),
-    );
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/activity'), headers: await getHeaders())
+          .timeout(const Duration(seconds: 12));
 
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      final list = (decoded is Map<String, dynamic>)
-          ? decoded['activity']
-          : null;
-      if (list is List) {
-        return list
-            .whereType<Map<String, dynamic>>()
-            .map((e) => MentorActivityItem.fromJson(e))
-            .toList();
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        final list = (decoded is Map<String, dynamic>)
+            ? decoded['activity']
+            : null;
+        if (list is List) {
+          return list
+              .whereType<Map<String, dynamic>>()
+              .map((e) => MentorActivityItem.fromJson(e))
+              .toList();
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
       }
       return [];
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
-    }
-
-    throw Exception('Failed to load mentor activity');
-  }
-
-  Future<MentorVerificationStats> fetchVerificationAnalytics() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/verification-analytics'),
-      headers: await getHeaders(),
-    );
-
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      if (decoded is Map<String, dynamic>) {
-        return MentorVerificationStats.fromJson(decoded);
-      }
-      throw Exception('Invalid analytics response');
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
-    }
-
-    throw Exception('Failed to load verification analytics');
-  }
-
-  Future<List<MentorWeeklySummary>> fetchMonthlyVerification() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/monthly-verification'),
-      headers: await getHeaders(),
-    );
-
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      final list = (decoded is Map<String, dynamic>) ? decoded['weekly'] : null;
-      if (list is List) {
-        return list
-            .whereType<Map<String, dynamic>>()
-            .map((e) => MentorWeeklySummary.fromJson(e))
-            .toList();
-      }
+    } catch (_) {
       return [];
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
     }
-
-    throw Exception('Failed to load monthly verification');
-  }
-
-  Future<List<MentorRecentDecision>> fetchRecentDecisions() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/recent-activity'),
-      headers: await getHeaders(),
-    );
-
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      final list = (decoded is Map<String, dynamic>)
-          ? decoded['activity']
-          : null;
-      if (list is List) {
-        return list
-            .whereType<Map<String, dynamic>>()
-            .map((e) => MentorRecentDecision.fromJson(e))
-            .toList();
-      }
-      return [];
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
-    }
-
-    throw Exception('Failed to load recent activity');
   }
 
   Future<List<MentorStudent>> fetchStudents() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/students'),
-      headers: await getHeaders(),
-    );
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/students'), headers: await getHeaders())
+          .timeout(const Duration(seconds: 15));
 
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      final list = (decoded is Map<String, dynamic>)
-          ? decoded['students']
-          : null;
-      if (list is List) {
-        return list
-            .whereType<Map<String, dynamic>>()
-            .map((e) => MentorStudent.fromJson(e))
-            .toList();
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        final list = (decoded is Map<String, dynamic>)
+            ? decoded['students']
+            : null;
+        if (list is List) {
+          return list
+              .whereType<Map<String, dynamic>>()
+              .map((e) => MentorStudent.fromJson(e))
+              .toList();
+        }
+        return [];
+      } else if (response.statusCode == 401) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
+      }
+      throw Exception('Failed to load students (${response.statusCode})');
+    } on SocketException {
+      throw Exception('Network error while fetching students list.');
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
+    }
+  }
+
+  Future<MentorReviewCertificate> fetchCertificate(int certificateId) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/certificate/$certificateId'),
+            headers: await getHeaders(),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        return MentorReviewCertificate.fromJson(decoded['certificate']);
+      } else if (response.statusCode == 401) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
+      }
+      throw Exception('Certificate fetch failed (${response.statusCode})');
+    } on SocketException {
+      throw Exception('Network error: Cannot load certificate details.');
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
+    }
+  }
+
+  Future<void> approveCertificate(int certificateId) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/approve-certificate'),
+            headers: await getHeaders(),
+            body: json.encode({"certificate_id": certificateId}),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) return;
+      if (response.statusCode == 401) throw UnauthorizedException();
+
+      final msg = _extractMsg(response.body) ?? 'Approve failed';
+      throw Exception(msg);
+    } on SocketException {
+      throw Exception('Network error: Failed to approve certificate.');
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
+    }
+  }
+
+  Future<void> rejectCertificate(int certificateId, String remark) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/reject-certificate'),
+            headers: await getHeaders(),
+            body: json.encode({
+              "certificate_id": certificateId,
+              "remark": remark,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) return;
+      if (response.statusCode == 401) throw UnauthorizedException();
+
+      final msg = _extractMsg(response.body) ?? 'Reject failed';
+      throw Exception(msg);
+    } on SocketException {
+      throw Exception('Network error: Failed to reject certificate.');
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
+    }
+  }
+
+  // ── Analytics & History ────────────────────────────────────────────────────
+
+  Future<MentorVerificationStats> fetchVerificationAnalytics() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/verification-analytics'),
+            headers: await getHeaders(),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        return MentorVerificationStats.fromJson(decoded);
+      } else if (response.statusCode == 401) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
+      }
+      throw Exception('Failed to load analytics');
+    } catch (_) {
+      throw Exception('Could not load analytics data.');
+    }
+  }
+
+  Future<List<MentorWeeklySummary>> fetchMonthlyVerification() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/monthly-verification'),
+            headers: await getHeaders(),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        final list = (decoded is Map<String, dynamic>)
+            ? decoded['weekly']
+            : null;
+        if (list is List) {
+          return list
+              .whereType<Map<String, dynamic>>()
+              .map((e) => MentorWeeklySummary.fromJson(e))
+              .toList();
+        }
       }
       return [];
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
+    } catch (_) {
+      return [];
     }
+  }
 
-    throw Exception(
-      'Failed to load mentor students: ${response.statusCode} - ${response.body}',
-    );
+  Future<List<MentorRecentDecision>> fetchRecentDecisions() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/recent-activity'),
+            headers: await getHeaders(),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        final list = (decoded is Map<String, dynamic>)
+            ? decoded['activity']
+            : null;
+        if (list is List) {
+          return list
+              .whereType<Map<String, dynamic>>()
+              .map((e) => MentorRecentDecision.fromJson(e))
+              .toList();
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<MentorStudentCertificate>> fetchStudentCertificates(
     int studentId,
   ) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/student-certificates/$studentId'),
-      headers: await getHeaders(),
-    );
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/student-certificates/$studentId'),
+            headers: await getHeaders(),
+          )
+          .timeout(const Duration(seconds: 15));
 
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      final list = (decoded is Map<String, dynamic>)
-          ? decoded['certificates']
-          : null;
-      if (list is List) {
-        return list
-            .whereType<Map<String, dynamic>>()
-            .map((e) => MentorStudentCertificate.fromJson(e))
-            .toList();
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        final list = (decoded is Map<String, dynamic>)
+            ? decoded['certificates']
+            : null;
+        if (list is List) {
+          return list
+              .whereType<Map<String, dynamic>>()
+              .map((e) => MentorStudentCertificate.fromJson(e))
+              .toList();
+        }
       }
       return [];
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
-    }
-
-    if (response.statusCode == 404) {
-      throw Exception('Student not found');
-    }
-    if (response.statusCode == 403) {
-      throw Exception('Access denied');
-    }
-
-    throw Exception(
-      'Failed to load student certificates: ${response.statusCode} - ${response.body}',
-    );
-  }
-
-  Future<MentorReviewCertificate> fetchCertificate(int certificateId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/certificate/$certificateId'),
-      headers: await getHeaders(),
-    );
-
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      return MentorReviewCertificate.fromJson(decoded['certificate']);
-    } else if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
-    }
-
-    throw Exception(
-      'Failed to load certificate: ${response.statusCode} - ${response.body}',
-    );
-  }
-
-  Future<void> approveCertificate(int certificateId) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/approve-certificate'),
-      headers: await getHeaders(),
-      body: json.encode({"certificate_id": certificateId}),
-    );
-
-    if (response.statusCode == 401) {
-      throw UnauthorizedException();
-    }
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Failed to approve certificate: ${response.statusCode} - ${response.body}',
-      );
+    } catch (_) {
+      return [];
     }
   }
 
-  Future<void> rejectCertificate(int certificateId, String remark) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/reject-certificate'),
-      headers: await getHeaders(),
-      body: json.encode({"certificate_id": certificateId, "remark": remark}),
-    );
+  // ── Helper ────────────────────────────────────────────────────────────────
 
-    if (response.statusCode == 401) {
-      throw UnauthorizedException();
-    }
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Failed to reject certificate: ${response.statusCode} - ${response.body}',
-      );
-    }
+  String? _extractMsg(String body) {
+    try {
+      final decoded = json.decode(body);
+      if (decoded is Map) {
+        return decoded['msg']?.toString() ?? decoded['error']?.toString();
+      }
+    } catch (_) {}
+    return null;
   }
 }

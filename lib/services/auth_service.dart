@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
@@ -13,30 +15,60 @@ class AuthService {
   // ── Auth APIs ─────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/register'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(userData),
-    );
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      return json.decode(response.body);
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(userData),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      }
+
+      final msg = _extractMsg(response.body) ?? 'Registration failed';
+      throw Exception(msg);
+    } on SocketException {
+      throw Exception('Network error: Please check your internet connection');
+    } on TimeoutException {
+      throw Exception(
+        'Request timed out: Server is taking too long to respond',
+      );
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('An unexpected error occurred: ${e.toString()}');
     }
-    // Return real server message
-    final msg = _extractMsg(response.body) ?? 'Registration failed';
-    throw Exception(msg);
   }
 
   Future<Map<String, dynamic>> login(String email, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode({'email': email, 'password': password}),
-    );
-    if (response.statusCode == 200) {
-      return json.decode(response.body);
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'email': email, 'password': password}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      final msg = _extractMsg(response.body) ?? 'Invalid email or password';
+      throw Exception(msg);
+    } on SocketException {
+      throw Exception(
+        'Network error: Unable to reach the server. Please check your internet.',
+      );
+    } on TimeoutException {
+      throw Exception(
+        'Connection timed out. Render backend may be waking up, please try again.',
+      );
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Login failed: ${e.toString()}');
     }
-    final msg = _extractMsg(response.body) ?? 'Invalid email or password';
-    throw Exception(msg);
   }
 
   // ── Token storage ─────────────────────────────────────────────────────────
@@ -69,16 +101,11 @@ class AuthService {
 
   // ── Token verification (startup check) ───────────────────────────────────
 
-  /// Returns true if the stored token is still valid on the backend.
   Future<bool> verifyToken() async {
     final result = await verifyTokenAndGetRole();
     return result != null;
   }
 
-  /// Verifies token AND returns the role from the backend response.
-  /// Returns role string ("student"/"mentor") on success.
-  /// Returns null on invalid token (also clears storage).
-  /// On network error: returns locally stored role (offline tolerance, no logout).
   Future<String?> verifyTokenAndGetRole() async {
     final token = await getToken();
     if (token == null || token.isEmpty) return null;
@@ -97,7 +124,6 @@ class AuthService {
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
         if (decoded['valid'] == true) {
-          // Read the role from the backend response (trusted, always lowercase)
           final role = (decoded['user']?['role'] ?? '')
               .toString()
               .toLowerCase()
@@ -105,12 +131,9 @@ class AuthService {
           return role.isEmpty ? null : role;
         }
       }
-      // Token invalid / expired → clear everything
       await logout();
       return null;
     } catch (_) {
-      // Network error / timeout: do NOT clear credentials
-      // Fall back to locally stored role so offline navigation still works
       return await getRole();
     }
   }
@@ -124,37 +147,70 @@ class AuthService {
     required String employeeId,
     required String password,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/mentor-signup'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode({
-        'name': name,
-        'email': email,
-        'department': department,
-        'employee_id': employeeId,
-        'password': password,
-      }),
-    );
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/mentor-signup'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'name': name,
+              'email': email,
+              'department': department,
+              'employee_id': employeeId,
+              'password': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
-    if (response.statusCode == 200 || response.statusCode == 201) return;
+      if (response.statusCode == 200 || response.statusCode == 201) return;
 
-    final msg = _extractMsg(response.body) ?? 'Failed to create mentor account';
-    throw Exception(msg);
+      final msg =
+          _extractMsg(response.body) ?? 'Failed to create mentor account';
+      throw Exception(msg);
+    } on SocketException {
+      throw Exception('Network error: No internet connection');
+    } on TimeoutException {
+      throw Exception('Signup timed out. Please try again.');
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Signup error: ${e.toString()}');
+    }
   }
 
   // ── Mentor list ───────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> fetchMentors() async {
-    final response = await http.get(
-      Uri.parse(ApiConfig.mentorsList),
-      headers: {'Content-Type': 'application/json'},
-    );
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body);
-      final list = decoded['mentors'] as List;
-      return list.cast<Map<String, dynamic>>();
+    try {
+      final response = await http
+          .get(
+            Uri.parse(ApiConfig.mentorsList),
+            headers: {'Content-Type': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+
+        // Handle both direct array and wrapped object for robustness
+        List<dynamic> list;
+        if (decoded is List) {
+          list = decoded;
+        } else if (decoded is Map && decoded.containsKey('mentors')) {
+          list = decoded['mentors'] as List;
+        } else {
+          throw Exception('Unexpected response format from mentors API');
+        }
+
+        return list.cast<Map<String, dynamic>>();
+      }
+      throw Exception('Server returned ${response.statusCode}');
+    } on SocketException {
+      throw Exception('Network error: Could not fetch mentors list');
+    } on TimeoutException {
+      throw Exception('Mentors fetch timed out');
+    } catch (e) {
+      throw Exception('Failed to load mentors: ${e.toString()}');
     }
-    throw Exception('Failed to load mentors');
   }
 
   // ── Helper ────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/mentor_models.dart';
 import '../../services/mentor_api_service.dart';
+import '../../config/api_config.dart';
 
 class ReviewCertificateScreen extends StatefulWidget {
   final int certificateId;
@@ -219,7 +220,7 @@ class _ReviewCertificateScreenState extends State<ReviewCertificateScreen> {
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: Image.network(
-                        'http://10.0.2.2:5000/${_certificate!.image}'
+                        '${ApiConfig.origin}/uploads/certificates/${_certificate!.image}'
                             .replaceAll('\\', '/'),
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>

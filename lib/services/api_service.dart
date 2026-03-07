@@ -1,5 +1,6 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
@@ -9,7 +10,6 @@ import '../exceptions/auth_exception.dart';
 import '../utils/auth_helper.dart';
 
 class ApiService {
-  // Use a getter so the URL is always fresh (not stale from construction time)
   String get baseUrl => ApiConfig.studentBase;
 
   Future<Map<String, String>> getHeaders() async {
@@ -25,13 +25,10 @@ class ApiService {
 
   Future<StudentProfile> fetchProfile() async {
     final url = '$baseUrl/profile';
-    debugPrint('📡 fetchProfile → $url');
     try {
       final response = await http
           .get(Uri.parse(url), headers: await getHeaders())
-          .timeout(const Duration(seconds: 10));
-
-      debugPrint('fetchProfile status: ${response.statusCode}');
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         return StudentProfile.fromJson(json.decode(response.body));
@@ -39,17 +36,18 @@ class ApiService {
         AuthHelper.handleUnauthorized();
         throw UnauthorizedException();
       } else {
-        final msg =
-            _extractError(response.body) ??
-            'Profile load failed (${response.statusCode})';
+        final msg = _extractError(response.body) ?? 'Profile load failed';
         throw Exception(msg);
       }
-    } on UnauthorizedException {
-      rethrow;
+    } on SocketException {
+      throw Exception(
+        'Network error: Unable to load profile. Check your internet.',
+      );
+    } on TimeoutException {
+      throw Exception('Connection timed out while loading profile.');
     } catch (e) {
       if (e is UnauthorizedException) rethrow;
-      debugPrint('fetchProfile error: $e');
-      throw Exception('Cannot connect to server. Check your network.');
+      rethrow;
     }
   }
 
@@ -57,11 +55,10 @@ class ApiService {
 
   Future<DashboardStats> fetchDashboardStats() async {
     final url = '$baseUrl/dashboard';
-    debugPrint('📡 fetchDashboardStats → $url');
     try {
       final response = await http
           .get(Uri.parse(url), headers: await getHeaders())
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         return DashboardStats.fromJson(json.decode(response.body));
@@ -69,16 +66,15 @@ class ApiService {
         AuthHelper.handleUnauthorized();
         throw UnauthorizedException();
       } else {
-        throw Exception(
-          'Dashboard load failed (${response.statusCode}): ${response.body}',
-        );
+        throw Exception('Dashboard load failed (${response.statusCode})');
       }
-    } on UnauthorizedException {
-      rethrow;
+    } on SocketException {
+      throw Exception('Network error: Cannot reach server for stats.');
+    } on TimeoutException {
+      throw Exception('Dashboard sync timed out.');
     } catch (e) {
       if (e is UnauthorizedException) rethrow;
-      debugPrint('fetchDashboardStats error: $e');
-      throw Exception('Cannot connect to server. Check your network.');
+      rethrow;
     }
   }
 
@@ -86,27 +82,18 @@ class ApiService {
 
   Future<List<Certificate>> fetchRecentCertificates() async {
     final url = '$baseUrl/recent-certificates';
-    debugPrint('📡 fetchRecentCertificates → $url');
     try {
       final response = await http
           .get(Uri.parse(url), headers: await getHeaders())
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
-        final Iterable l = json.decode(response.body);
-        return List<Certificate>.from(l.map((m) => Certificate.fromJson(m)));
-      } else if (response.statusCode == 401) {
-        AuthHelper.handleUnauthorized();
-        throw UnauthorizedException();
-      } else {
-        // Non-critical — return empty list instead of crashing
-        return [];
+        final List<dynamic> l = json.decode(response.body);
+        return l.map((m) => Certificate.fromJson(m)).toList();
       }
-    } on UnauthorizedException {
-      rethrow;
-    } catch (e) {
-      debugPrint('fetchRecentCertificates error: $e');
-      return []; // non-critical, don't block profile from loading
+      return [];
+    } catch (_) {
+      return []; // Non-critical failures return empty list
     }
   }
 
@@ -122,50 +109,58 @@ class ApiService {
     required String description,
     required String filePath,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_token');
-
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl/upload-certificate'),
-    );
-
-    if (token != null) {
-      request.headers['Authorization'] = 'Bearer $token';
-    }
-
-    request.fields['participation_type'] = participationType;
-    request.fields['event_name'] = eventName;
-    request.fields['organizing_institute'] = organizingInstitute;
-    request.fields['event_date'] = eventDate;
-    request.fields['certificate_type'] = certificateType;
-    request.fields['roll_number'] = rollNumber;
-    request.fields['description'] = description;
-
-    request.files.add(
-      await http.MultipartFile.fromPath('certificate_file', filePath),
-    );
-
-    final response = await request.send();
-    final body = await response.stream.bytesToString();
-
-    if (response.statusCode == 401) {
-      AuthHelper.handleUnauthorized();
-      throw UnauthorizedException();
-    }
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      final errMsg =
-          _extractError(body) ?? 'Upload failed (${response.statusCode})';
-      throw Exception(errMsg);
-    }
-
-    if (body.isEmpty) return {};
     try {
-      final decoded = json.decode(body);
-      if (decoded is Map<String, dynamic>) return decoded;
-      return {};
-    } catch (_) {
-      return {};
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/upload-certificate'),
+      );
+
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+
+      request.fields['participation_type'] = participationType;
+      request.fields['event_name'] = eventName;
+      request.fields['organizing_institute'] = organizingInstitute;
+      request.fields['event_date'] = eventDate;
+      request.fields['certificate_type'] = certificateType;
+      request.fields['roll_number'] = rollNumber;
+      request.fields['description'] = description;
+
+      request.files.add(
+        await http.MultipartFile.fromPath('certificate_file', filePath),
+      );
+
+      final response = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final body = await response.stream.bytesToString();
+
+      if (response.statusCode == 401) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
+      }
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final errMsg =
+            _extractError(body) ?? 'Upload failed (${response.statusCode})';
+        throw Exception(errMsg);
+      }
+
+      return body.isNotEmpty ? json.decode(body) : {};
+    } on SocketException {
+      throw Exception(
+        'Network error: Could not upload file. Check your connectivity.',
+      );
+    } on TimeoutException {
+      throw Exception(
+        'Upload timed out. The file might be too large or the server is slow.',
+      );
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
     }
   }
 
@@ -180,25 +175,25 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse(url), headers: await getHeaders())
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final Iterable l = data['certificates'];
-        return List<MyCertificate>.from(
-          l.map((m) => MyCertificate.fromJson(m)),
-        );
+        final List<dynamic> l = data['certificates'] ?? [];
+        return l.map((m) => MyCertificate.fromJson(m)).toList();
       } else if (response.statusCode == 401) {
         AuthHelper.handleUnauthorized();
         throw UnauthorizedException();
       } else {
         throw Exception('Failed to load certificates');
       }
-    } on UnauthorizedException {
-      rethrow;
+    } on SocketException {
+      throw Exception('Network error: Unable to fetch certificates.');
+    } on TimeoutException {
+      throw Exception('Request timed out while fetching your certificates.');
     } catch (e) {
       if (e is UnauthorizedException) rethrow;
-      throw Exception('Cannot connect to server. Check your network.');
+      rethrow;
     }
   }
 

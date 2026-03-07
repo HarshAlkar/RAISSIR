@@ -1,41 +1,25 @@
-import 'package:flutter/foundation.dart';
-
 class ApiConfig {
-  // ─── Production URL (Render) ─────────────────────────────────────────────
+  /// Production Backend URL (Always use HTTPS for real devices)
   static const String _productionUrl = 'https://raissir.onrender.com';
 
-  // ─── Local development IP (same Wi-Fi network) ───────────────────────────
-  // Only used when running on a desktop or emulator, NOT real phone.
-  static const String _localIp = '192.168.29.109';
-  static const String _localPort = '5000';
-
-  // ─── Build-time override ──────────────────────────────────────────────────
-  // flutter run --dart-define=API_BASE_URL=http://192.168.1.5:5000
+  /// Build-time override (optional)
+  /// Use: flutter run --dart-define=API_BASE_URL=https://your-api.com
   static const String _baseUrlOverride = String.fromEnvironment('API_BASE_URL');
 
-  // ─── URL resolution ───────────────────────────────────────────────────────
+  /// The final resolved origin URL.
+  /// This ensures that the production Render URL is used on real devices.
   static String get origin {
-    // 1. Explicit build-time override always wins
+    // 1. Explicit build-time override wins if provided
     if (_baseUrlOverride.trim().isNotEmpty) {
       return _baseUrlOverride.trim().replaceAll(RegExp(r'/$'), '');
     }
 
-    // 2. Web → local or production based on mode
-    if (kIsWeb) {
-      return kDebugMode ? 'http://localhost:$_localPort' : _productionUrl;
-    }
-
-    // 3. Android / iOS real device → always use Render (production)
-    //    Real phones may not be on the same Wi-Fi as the dev machine.
-    if (defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS) {
-      return _productionUrl;
-    }
-
-    // 4. Desktop (Windows/Mac/Linux) or emulator → local backend
-    return 'http://$_localIp:$_localPort';
+    // 2. Default to Production URL
+    // All requests must use the Render backend to work on real phones.
+    return _productionUrl;
   }
 
+  // API Endpoints
   static String get authBase => '$origin/api/auth';
   static String get studentBase => '$origin/api/student';
   static String get mentorBase => '$origin/api/mentor';

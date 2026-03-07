@@ -207,7 +207,7 @@ app.get('/api/auth/verify', auth, verifyTokenHandler);
 app.get('/api/mentors', async (req, res) => {
     try {
         const result = await pool.query('SELECT id, name, department FROM users WHERE role = $1 ORDER BY name ASC', ['mentor']);
-        res.json({ mentors: result.rows });
+        res.json(result.rows);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });

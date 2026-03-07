@@ -171,7 +171,7 @@ class _MyCertificatesScreenState extends State<MyCertificatesScreen>
                     image: cert.certificateFile != null
                         ? DecorationImage(
                             image: NetworkImage(
-                              "${ApiConfig.origin}/${cert.certificateFile!.replaceAll(r'\', '/')}",
+                              "${ApiConfig.origin}/uploads/certificates/${cert.certificateFile!.replaceAll(r'\', '/')}",
                             ),
                             fit: BoxFit.cover,
                           )
