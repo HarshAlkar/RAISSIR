@@ -2,6 +2,8 @@ class ApiConfig {
   /// Production Backend URL (Always use HTTPS for real devices)
   static const String _productionUrl = 'https://raissir.onrender.com';
 
+  // static const String _productionUrl = 'http://localhost:5000';
+
   /// Build-time override (optional)
   /// Use: flutter run --dart-define=API_BASE_URL=https://your-api.com
   static const String _baseUrlOverride = String.fromEnvironment('API_BASE_URL');
@@ -23,6 +25,7 @@ class ApiConfig {
   static String get authBase => '$origin/api/auth';
   static String get studentBase => '$origin/api/student';
   static String get mentorBase => '$origin/api/mentor';
+  static String get adminBase => '$origin/api/admin';
   static String get mentorsList => '$origin/api/mentors';
   static String get uploadsBase => '$origin/uploads';
 }

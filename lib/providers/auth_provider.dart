@@ -19,13 +19,21 @@ class AuthProvider with ChangeNotifier {
   /// Calls the backend login API.
   /// Returns the **role string** ("student", "mentor", "admin") on success.
   /// Returns **null** on failure, and sets [error].
-  Future<String?> login(String email, String password) async {
+  Future<String?> login(
+    String email,
+    String password, {
+    bool isAdmin = false,
+  }) async {
     _isLoading = true;
     _error = '';
     notifyListeners();
 
     try {
-      final response = await _authService.login(email, password);
+      final response = await _authService.login(
+        email,
+        password,
+        isAdmin: isAdmin,
+      );
 
       // Extract and normalize values immediately from the response map
       final String? rawToken = response['token']?.toString();

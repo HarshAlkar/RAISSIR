@@ -11,6 +11,7 @@ import 'screens/student/profile_screen.dart';
 import 'screens/student/dashboard_screen.dart';
 import 'screens/auth/mentor_registration_screen.dart';
 import 'screens/mentor/mentor_dashboard_screen.dart';
+import 'screens/admin/admin_main_screen.dart';
 import 'screens/mentor/mentor_students_screen.dart';
 import 'screens/mentor/mentor_verify_screen.dart';
 import 'screens/mentor/mentor_settings_screen.dart';
@@ -64,7 +65,7 @@ class MyApp extends StatelessWidget {
         '/mentor-signup': (context) => const MentorRegistrationScreen(),
         '/mentor/dashboard': (context) => const MentorDashboardScreen(),
         '/mentor-dashboard': (context) => const MentorDashboardScreen(),
-        '/admin-dashboard': (context) => const MentorDashboardScreen(),
+        '/admin-dashboard': (context) => const AdminMainScreen(),
         '/mentor/students': (context) => const MentorStudentsScreen(),
         '/mentor/verify': (context) => const MentorVerifyScreen(),
         '/mentor/settings': (context) => const MentorSettingsScreen(),

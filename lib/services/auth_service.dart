@@ -42,11 +42,16 @@ class AuthService {
     }
   }
 
-  Future<Map<String, dynamic>> login(String email, String password) async {
+  Future<Map<String, dynamic>> login(
+    String email,
+    String password, {
+    bool isAdmin = false,
+  }) async {
     try {
+      final url = isAdmin ? '${ApiConfig.adminBase}/login' : '$baseUrl/login';
       final response = await http
           .post(
-            Uri.parse('$baseUrl/login'),
+            Uri.parse(url),
             headers: {'Content-Type': 'application/json'},
             body: json.encode({'email': email, 'password': password}),
           )

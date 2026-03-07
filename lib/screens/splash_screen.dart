@@ -35,6 +35,8 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.pushReplacementNamed(context, '/student-dashboard');
       } else if (role == 'mentor') {
         Navigator.pushReplacementNamed(context, '/mentor-dashboard');
+      } else if (role == 'admin') {
+        Navigator.pushReplacementNamed(context, '/admin-dashboard');
       } else {
         // Unknown role — go to login for safety
         Navigator.pushReplacementNamed(context, '/login');

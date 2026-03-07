@@ -30,7 +30,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     // login() now returns the actual role from backend directly
-    final role = await authProvider.login(email, password);
+    final role = await authProvider.login(
+      email,
+      password,
+      isAdmin: _selectedRole == 'Admin',
+    );
 
     if (!mounted) return;
 
@@ -60,8 +64,10 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacementNamed(context, '/student-dashboard');
       } else if (role == 'mentor') {
         Navigator.pushReplacementNamed(context, '/mentor-dashboard');
+      } else if (role == 'admin') {
+        Navigator.pushReplacementNamed(context, '/admin-dashboard');
       } else {
-        Navigator.pushReplacementNamed(context, '/mentor-dashboard');
+        Navigator.pushReplacementNamed(context, '/login');
       }
     } else {
       // Login failed — show error from provider

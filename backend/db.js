@@ -3,28 +3,28 @@ require('dotenv').config();
 
 let pool;
 
-if (process.env.DATABASE_URL) {
-    // ── Neon / Cloud PostgreSQL (SSL required) ──────────────────────────────
-    pool = new Pool({
+/**
+ * STEP 2 & 3: FIX DATABASE CONNECTION CODE & HANDLE CLOUD + LOCAL
+ * We support both DATABASE_URL (Cloud/Neon) and individual DB_* (Local) variables.
+ */
+const poolConfig = process.env.DATABASE_URL
+    ? {
         connectionString: process.env.DATABASE_URL,
         ssl: { rejectUnauthorized: false },
         max: 10,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 10000,
-    });
-    console.log('Using cloud PostgreSQL (DATABASE_URL)');
-} else {
-    // ── Local PostgreSQL ───────────────────────────────────────────────────
-    pool = new Pool({
+    }
+    : {
         host: process.env.DB_HOST || 'localhost',
         port: Number(process.env.DB_PORT) || 5432,
         user: process.env.DB_USER || 'postgres',
         password: process.env.DB_PASSWORD || 'root',
         database: process.env.DB_NAME || 'cretipoint',
         ssl: false,
-    });
-    console.log('Using local PostgreSQL');
-}
+    };
+
+pool = new Pool(poolConfig);
 
 pool.on('error', (err) => {
     console.error('Unexpected DB pool error:', err.message);
@@ -94,8 +94,20 @@ async function ensureTablesExist() {
         )
     `);
 
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS admins (
+            id         SERIAL PRIMARY KEY,
+            name       VARCHAR(100) NOT NULL,
+            email      VARCHAR(100) UNIQUE NOT NULL,
+            password   TEXT         NOT NULL,
+            created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
     // Safe migrations for existing tables
     const safeAddColumns = [
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS status       VARCHAR(50)  DEFAULT 'active'`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image VARCHAR(500) DEFAULT '/uploads/profile/default.png'`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS department   VARCHAR(200)`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id  VARCHAR(100)`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS mentor_id    INTEGER`,
@@ -109,7 +121,6 @@ async function ensureTablesExist() {
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS verified_by         INTEGER`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS verified_at         TIMESTAMP`,
         `ALTER TABLE certificates ADD COLUMN IF NOT EXISTS created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
-        // Fix existing too-small VARCHAR columns
         `ALTER TABLE certificates ALTER COLUMN participation_type TYPE VARCHAR(100)`,
         `ALTER TABLE certificates ALTER COLUMN certificate_type   TYPE VARCHAR(100)`,
         `ALTER TABLE certificates ALTER COLUMN event_name         TYPE VARCHAR(500)`,
@@ -121,23 +132,62 @@ async function ensureTablesExist() {
         try { await pool.query(sql); } catch (_) { /* column already exists */ }
     }
 
-    // Ensure correct defaults
     try { await pool.query(`ALTER TABLE certificates ALTER COLUMN status SET DEFAULT 'pending'`); } catch (_) { }
     try { await pool.query(`ALTER TABLE certificates ALTER COLUMN points  SET DEFAULT 0`); } catch (_) { }
+
+    // Seed initial admin if none exists
+    const adminCheck = await pool.query('SELECT 1 FROM admins LIMIT 1');
+    if (adminCheck.rowCount === 0) {
+        const bcrypt = require('bcryptjs');
+        const hashedPassword = await bcrypt.hash('admin123', 10);
+        await pool.query(
+            'INSERT INTO admins (name, email, password) VALUES ($1, $2, $3)',
+            ['System Admin', 'admin@certitrack.com', hashedPassword]
+        );
+        console.log('✅ Initial admin created (admin@certitrack.com / admin123)');
+    }
 }
 
-async function initDatabase() {
-    await ensureDatabaseExists();
-    await ensureTablesExist();
-    await pool.query('SELECT 1'); // connectivity check
-    console.log('PostgreSQL Connected');
+/**
+ * STEP 5: PREVENT BACKEND CRASH
+ * Wrap initialization in try/catch to log error but not kill server if possible.
+ */
+async function initDatabase(retries = 3) {
+    try {
+        console.log("Initializing database connection...");
+        await ensureDatabaseExists();
+        await ensureTablesExist();
+
+        // Connectivity check
+        await pool.query('SELECT 1');
+
+        /**
+         * STEP 4: ADD DATABASE CONNECTION LOG
+         */
+        const mode = process.env.DATABASE_URL ? "Cloud (Neon)" : "Local";
+        console.log(`✅ Connected to PostgreSQL database [Mode: ${mode}]`);
+    } catch (err) {
+        if (err.code === 'ENOTFOUND' && retries > 0) {
+            console.warn(`⚠️ DNS Error: Could not resolve Neon host. Retrying... (${retries} attempts left)`);
+            await new Promise(res => setTimeout(res, 3000));
+            return initDatabase(retries - 1);
+        }
+
+        console.error('❌ Database Initialization Error:', err.message);
+
+        // If Cloud DB fails, we don't automatically fall back in code (to avoid data inconsistency),
+        // but we log it clearly so the user knows what's wrong.
+        if (err.code === 'ENOTFOUND') {
+            console.warn('⚠️ Final DNS Failure: Node.js cannot find the Neon host. Please check your internet connection or verify your DATABASE_URL in the .env file.');
+        } else if (err.code === 'ECONNREFUSED') {
+            console.warn('⚠️ Connection Refused: The database server rejected the connection. Check if your DB is running and credentials are correct.');
+        }
+    }
 }
 
-// Expose readiness promise so server waits for DB before listening
-const ready = initDatabase().catch((err) => {
-    console.error('PostgreSQL init error:', err);
-    throw err;
-});
+// Expose readiness promise
+const ready = initDatabase();
 pool.ready = ready;
 
 module.exports = pool;
+

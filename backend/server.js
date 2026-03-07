@@ -811,6 +811,440 @@ app.post('/api/student/upload-certificate', auth, requireRole('student'), upload
     }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN APIS  (do NOT touch anything above this comment)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Admin auth middleware — only role=admin JWTs pass
+const adminAuth = (req, res, next) => {
+    let token = req.header('Authorization');
+    if (!token) return res.status(401).json({ msg: 'No token, authorization denied' });
+    if (token.startsWith('Bearer ')) token = token.slice(7);
+    try {
+        const secret = process.env.JWT_SECRET || 'super_secret_key';
+        const decoded = jwt.verify(token, secret);
+        if (decoded.role !== 'admin') {
+            return res.status(403).json({ msg: 'Access denied: admins only' });
+        }
+        req.user = decoded;
+        next();
+    } catch (err) {
+        return res.status(401).json({ msg: 'Token is not valid' });
+    }
+};
+
+// POST /api/admin/login
+app.post('/api/admin/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) return res.status(400).json({ msg: 'Email and password are required' });
+
+        const result = await pool.query('SELECT * FROM admins WHERE email = $1', [email]);
+        if (result.rows.length === 0) return res.status(400).json({ msg: 'Invalid credentials' });
+
+        const admin = result.rows[0];
+        const isMatch = await bcrypt.compare(password, admin.password);
+        if (!isMatch) return res.status(400).json({ msg: 'Invalid credentials' });
+
+        const secret = process.env.JWT_SECRET || 'super_secret_key';
+        const token = jwt.sign({ id: admin.id, role: 'admin', name: admin.name }, secret, { expiresIn: '7d' });
+
+        res.json({
+            token,
+            user: { id: admin.id, name: admin.name, email: admin.email, role: 'admin' },
+        });
+    } catch (err) {
+        console.error('Admin login error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/admin/seed  — create the first admin account (run once)
+app.post('/api/admin/seed', async (req, res) => {
+    try {
+        const { name, email, password, secret_key } = req.body;
+        if (secret_key !== (process.env.ADMIN_SEED_KEY || 'certitrack_admin_2024')) {
+            return res.status(403).json({ msg: 'Invalid secret key' });
+        }
+        const existing = await pool.query('SELECT id FROM admins WHERE email = $1', [email]);
+        if (existing.rows.length > 0) return res.status(400).json({ msg: 'Admin already exists' });
+
+        const salt = await bcrypt.genSalt(10);
+        const hashed = await bcrypt.hash(password, salt);
+        await pool.query('INSERT INTO admins (name, email, password) VALUES ($1, $2, $3)', [name, email, hashed]);
+        res.status(201).json({ msg: 'Admin created successfully' });
+    } catch (err) {
+        console.error('Admin seed error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/dashboard
+app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
+    try {
+        const [studentsRes, mentorsRes, certsRes, pendingRes] = await Promise.all([
+            pool.query("SELECT COUNT(*) FROM users WHERE role = 'student'"),
+            pool.query("SELECT COUNT(*) FROM users WHERE role = 'mentor'"),
+            pool.query("SELECT COUNT(*) FROM certificates"),
+            pool.query("SELECT COUNT(*) FROM certificates WHERE status = 'pending'"),
+        ]);
+
+        res.json({
+            total_students: parseInt(studentsRes.rows[0].count, 10),
+            total_mentors: parseInt(mentorsRes.rows[0].count, 10),
+            total_certificates: parseInt(certsRes.rows[0].count, 10),
+            pending_verifications: parseInt(pendingRes.rows[0].count, 10),
+        });
+    } catch (err) {
+        console.error('Admin dashboard error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/recent-activity
+app.get('/api/admin/recent-activity', adminAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT
+                u.name AS student_name,
+                c.event_name AS event,
+                c.status,
+                c.verified_at,
+                c.created_at
+             FROM certificates c
+             JOIN users u ON u.id = c.student_id
+             WHERE c.status IN ('approved', 'rejected')
+             ORDER BY COALESCE(c.verified_at, c.created_at) DESC
+             LIMIT 10`
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Admin recent-activity error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/students?search=alice
+app.get('/api/admin/students', adminAuth, async (req, res) => {
+    try {
+        const search = req.query.search ? `%${req.query.search}%` : null;
+
+        let query = `
+            SELECT
+                u.id,
+                u.name,
+                COALESCE(u.roll_number, '') AS roll_number,
+                COALESCE(u.department, '') AS department,
+                COALESCE(u.status, 'active') AS status,
+                COALESCE(u.profile_image, '/uploads/profile/default.png') AS profile_image,
+                COALESCE(COUNT(c.id), 0)::int AS submitted,
+                COALESCE(COUNT(c.id) FILTER (WHERE c.status = 'approved'), 0)::int AS approved,
+                COALESCE(COUNT(c.id) FILTER (WHERE c.status = 'pending'), 0)::int AS pending,
+                COALESCE(COUNT(c.id) FILTER (WHERE c.status = 'rejected'), 0)::int AS rejected
+             FROM users u
+             LEFT JOIN certificates c ON u.id = c.student_id
+             WHERE u.role = 'student'
+        `;
+
+        const values = [];
+        if (search) {
+            query += ` AND (u.name ILIKE $1 OR u.roll_number ILIKE $1)`;
+            values.push(search);
+        }
+
+        query += ` GROUP BY u.id ORDER BY u.name ASC`;
+
+        const result = await pool.query(query, values);
+        res.json({ students: result.rows });
+    } catch (err) {
+        console.error('Admin students error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/admin/student-status/:id
+app.patch('/api/admin/student-status/:id', adminAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        if (!['active', 'disabled'].includes(status)) {
+            return res.status(400).json({ msg: 'Invalid status' });
+        }
+
+        const result = await pool.query(
+            'UPDATE users SET status = $1 WHERE id = $2 AND role = $3 RETURNING id',
+            [status, id, 'student']
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ msg: 'Student not found' });
+        res.json({ msg: `Student account ${status} successfully` });
+    } catch (err) {
+        console.error('Admin student status update error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/admin/assign-mentor
+app.post('/api/admin/assign-mentor', adminAuth, async (req, res) => {
+    try {
+        const { student_id, mentor_id } = req.body;
+        if (!student_id || !mentor_id) return res.status(400).json({ msg: 'IDs are required' });
+
+        // Verify mentor exists and is actually a mentor
+        const mentorCheck = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [mentor_id, 'mentor']);
+        if (mentorCheck.rows.length === 0) return res.status(400).json({ msg: 'Invalid mentor ID' });
+
+        await pool.query('UPDATE users SET mentor_id = $1 WHERE id = $2 AND role = $3', [mentor_id, student_id, 'student']);
+        res.json({ msg: 'Mentor assigned successfully' });
+    } catch (err) {
+        console.error('Admin assign mentor error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/student-certificates/:studentId
+app.get('/api/admin/student-certificates/:studentId', adminAuth, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const result = await pool.query(
+            `SELECT
+                id,
+                event_name,
+                organizing_institute,
+                TO_CHAR(event_date, 'DD Mon YYYY') AS event_date,
+                participation_type,
+                certificate_type,
+                status,
+                points,
+                COALESCE(mentor_remark, '') AS mentor_remark,
+                created_at
+             FROM certificates
+             WHERE student_id = $1
+             ORDER BY created_at DESC`,
+            [studentId]
+        );
+        res.json({ certificates: result.rows });
+    } catch (err) {
+        console.error('Admin student certificates error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/mentors?search=smith&filter=active
+app.get('/api/admin/mentors', adminAuth, async (req, res) => {
+    try {
+        const { search, filter } = req.query;
+        let query = `
+            SELECT
+                u.id,
+                u.name,
+                COALESCE(u.department, '') AS department,
+                COALESCE(u.employee_id, '') AS employee_id,
+                COALESCE(u.status, 'active') AS status,
+                COALESCE(u.profile_image, '/uploads/profile/default.png') AS profile_image,
+                COUNT(DISTINCT s.id)::int AS students_assigned,
+                COUNT(c.id)::int AS reviewed,
+                COUNT(CASE WHEN c.status='approved' THEN 1 END)::int AS approved,
+                COUNT(CASE WHEN c.status='rejected' THEN 1 END)::int AS rejected
+            FROM users u
+            LEFT JOIN users s ON s.mentor_id = u.id AND s.role = 'student'
+            LEFT JOIN certificates c ON c.verified_by = u.id
+            WHERE u.role = 'mentor'
+        `;
+
+        const values = [];
+        let valueCount = 1;
+
+        if (search) {
+            query += ` AND (u.name ILIKE $${valueCount} OR u.department ILIKE $${valueCount} OR u.employee_id ILIKE $${valueCount})`;
+            values.push(`%${search}%`);
+            valueCount++;
+        }
+
+        if (filter === 'active') {
+            query += ` AND u.status = 'active'`;
+        } else if (filter === 'pending') {
+            // Logic for 'pending' mentors if applicable, or just inactive
+            query += ` AND u.status = 'inactive'`;
+        }
+
+        query += ` GROUP BY u.id ORDER BY u.name ASC`;
+
+        const result = await pool.query(query, values);
+        res.json({ mentors: result.rows });
+    } catch (err) {
+        console.error('Admin mentors error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/mentor-students/:mentorId
+app.get('/api/admin/mentor-students/:mentorId', adminAuth, async (req, res) => {
+    try {
+        const { mentorId } = req.params;
+        const result = await pool.query(
+            `SELECT id, name, roll_number, department, status, profile_image 
+             FROM users 
+             WHERE mentor_id = $1 AND role = 'student'
+             ORDER BY name ASC`,
+            [mentorId]
+        );
+        res.json({ students: result.rows });
+    } catch (err) {
+        console.error('Admin mentor students error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/admin/reassign-students
+app.post('/api/admin/reassign-students', adminAuth, async (req, res) => {
+    try {
+        const { mentor_id, student_ids } = req.body;
+        if (!mentor_id || !Array.isArray(student_ids) || student_ids.length === 0) {
+            return res.status(400).json({ msg: 'Mentor ID and Student IDs array are required' });
+        }
+
+        // Verify mentor exists
+        const mentorCheck = await pool.query('SELECT id FROM users WHERE id = $1 AND role = $2', [mentor_id, 'mentor']);
+        if (mentorCheck.rows.length === 0) return res.status(400).json({ msg: 'Invalid mentor ID' });
+
+        await pool.query(
+            'UPDATE users SET mentor_id = $1 WHERE id = ANY($2) AND role = $3',
+            [mentor_id, student_ids, 'student']
+        );
+
+        res.json({ msg: `${student_ids.length} students reassigned successfully` });
+    } catch (err) {
+        console.error('Admin reassign error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/admin/mentor-status/:id
+app.patch('/api/admin/mentor-status/:id', adminAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        if (!['active', 'inactive'].includes(status)) {
+            return res.status(400).json({ msg: 'Invalid status' });
+        }
+
+        const result = await pool.query(
+            'UPDATE users SET status = $1 WHERE id = $2 AND role = $3 RETURNING id',
+            [status, id, 'mentor']
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ msg: 'Mentor not found' });
+        res.json({ msg: `Mentor account ${status} successfully` });
+    } catch (err) {
+        console.error('Admin mentor status error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/admin/register-mentor
+app.post('/api/admin/register-mentor', adminAuth, async (req, res) => {
+    try {
+        const { name, email, department, employee_id, password } = req.body;
+        if (!name || !email || !password) {
+            return res.status(400).json({ msg: 'Name, email, and password are required' });
+        }
+
+        const userExists = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (userExists.rows.length > 0) return res.status(400).json({ msg: 'User already exists' });
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        await pool.query(
+            `INSERT INTO users (name, email, password, department, employee_id, role, status) 
+             VALUES ($1, $2, $3, $4, $5, 'mentor', 'active')`,
+            [name, email, hashedPassword, department, employee_id]
+        );
+
+        res.json({ msg: 'Mentor registered successfully' });
+    } catch (err) {
+        console.error('Admin register mentor error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/certificates?status=approved|pending|rejected
+app.get('/api/admin/certificates', adminAuth, async (req, res) => {
+    try {
+        const status = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : null;
+        const validStatuses = ['approved', 'pending', 'rejected'];
+
+        let query = `
+            SELECT
+                c.id,
+                u.name AS student_name,
+                COALESCE(u.roll_number, '') AS roll_number,
+                COALESCE(u.department, '') AS department,
+                c.event_name,
+                c.organizing_institute,
+                TO_CHAR(c.event_date, 'DD Mon YYYY') AS event_date,
+                COALESCE(c.participation_type, '') AS participation_type,
+                COALESCE(c.certificate_type, '') AS certificate_type,
+                c.status,
+                c.points,
+                COALESCE(c.mentor_remark, '') AS mentor_remark,
+                c.created_at
+             FROM certificates c
+             JOIN users u ON u.id = c.student_id
+        `;
+        const values = [];
+        if (status && validStatuses.includes(status)) {
+            query += ' WHERE c.status = $1';
+            values.push(status);
+        }
+        query += ' ORDER BY c.created_at DESC';
+
+        const result = await pool.query(query, values);
+        res.json({ certificates: result.rows });
+    } catch (err) {
+        console.error('Admin certificates error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/analytics
+app.get('/api/admin/analytics', adminAuth, async (req, res) => {
+    try {
+        const [totalRes, approvedRes, monthlyRes] = await Promise.all([
+            pool.query("SELECT COUNT(*) FROM certificates"),
+            pool.query("SELECT COUNT(*) FROM certificates WHERE status = 'approved'"),
+            pool.query(`
+                SELECT
+                    TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') AS month,
+                    COUNT(*)::int AS uploads
+                FROM certificates
+                WHERE created_at >= NOW() - INTERVAL '6 months'
+                GROUP BY DATE_TRUNC('month', created_at)
+                ORDER BY DATE_TRUNC('month', created_at) ASC
+            `),
+        ]);
+
+        const total = parseInt(totalRes.rows[0].count, 10);
+        const approved = parseInt(approvedRes.rows[0].count, 10);
+        const approvalRate = total > 0 ? Math.round((approved / total) * 100) : 0;
+
+        res.json({
+            total_certificates: total,
+            total_approved: approved,
+            approval_rate: approvalRate,
+            monthly_uploads: monthlyRes.rows,
+        });
+    } catch (err) {
+        console.error('Admin analytics error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// END ADMIN APIS
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.use((err, req, res, next) => {
     console.error('Server Error:', err);
     if (res.headersSent) {
