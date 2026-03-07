@@ -1241,6 +1241,74 @@ app.get('/api/admin/analytics', adminAuth, async (req, res) => {
     }
 });
 
+// GET /api/admin/student/:id  — single student detail with mentor name + cert stats
+app.get('/api/admin/student/:id', adminAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `SELECT
+                u.id,
+                u.name,
+                COALESCE(u.email, '') AS email,
+                COALESCE(u.roll_number, '') AS roll_number,
+                COALESCE(u.department, '') AS department,
+                COALESCE(u.status, 'active') AS status,
+                COALESCE(u.profile_image, '/uploads/profile/default.png') AS profile_image,
+                COALESCE(m.name, 'Not Assigned') AS mentor_name,
+                COALESCE(u.mentor_id, 0)::int AS mentor_id,
+                COALESCE(COUNT(c.id), 0)::int AS submitted,
+                COALESCE(COUNT(c.id) FILTER (WHERE c.status = 'approved'), 0)::int AS approved,
+                COALESCE(COUNT(c.id) FILTER (WHERE c.status = 'pending'), 0)::int AS pending,
+                COALESCE(COUNT(c.id) FILTER (WHERE c.status = 'rejected'), 0)::int AS rejected,
+                COALESCE(SUM(c.points) FILTER (WHERE c.status = 'approved'), 0)::int AS total_points
+             FROM users u
+             LEFT JOIN users m ON m.id = u.mentor_id AND m.role = 'mentor'
+             LEFT JOIN certificates c ON c.student_id = u.id
+             WHERE u.id = $1 AND u.role = 'student'
+             GROUP BY u.id, m.name`,
+            [id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ msg: 'Student not found' });
+        res.json({ student: result.rows[0] });
+    } catch (err) {
+        console.error('Admin single student error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/certificate/:id  — single certificate detail with image file
+app.get('/api/admin/certificate/:id', adminAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `SELECT
+                c.id,
+                u.name AS student_name,
+                COALESCE(u.roll_number, '') AS roll_number,
+                COALESCE(u.department, '') AS department,
+                c.event_name,
+                c.organizing_institute,
+                TO_CHAR(c.event_date, 'DD Mon YYYY') AS event_date,
+                COALESCE(c.participation_type, '') AS participation_type,
+                COALESCE(c.certificate_type, '') AS certificate_type,
+                COALESCE(c.certificate_file, '') AS certificate_file,
+                c.status,
+                c.points,
+                COALESCE(c.mentor_remark, '') AS mentor_remark,
+                c.created_at
+             FROM certificates c
+             JOIN users u ON u.id = c.student_id
+             WHERE c.id = $1`,
+            [id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ msg: 'Certificate not found' });
+        res.json({ certificate: result.rows[0] });
+    } catch (err) {
+        console.error('Admin single certificate error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // END ADMIN APIS
 // ─────────────────────────────────────────────────────────────────────────────

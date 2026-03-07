@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/admin_api_service.dart';
 import '../../config/api_config.dart';
-import 'admin_certificates_screen.dart';
+import 'admin_student_details_screen.dart';
+import 'admin_student_certificates_screen.dart';
 
 class AdminStudentsScreen extends StatefulWidget {
   const AdminStudentsScreen({super.key});
@@ -243,206 +244,220 @@ class _AdminStudentsScreenState extends State<AdminStudentsScreen> {
   Widget _studentCard(AdminStudent s) {
     bool isActive = s.status == 'active';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AdminStudentDetailsScreen(studentId: s.id),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  s.profileImage.startsWith('http')
-                      ? s.profileImage
-                      : '${ApiConfig.origin}${s.profileImage}',
-                  width: 80,
-                  height: 80,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    width: 70,
-                    height: 70,
-                    color: const Color(0xFFEEF2FF),
-                    child: const Icon(Icons.person, color: _primary),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    s.profileImage.startsWith('http')
+                        ? s.profileImage
+                        : '${ApiConfig.origin}${s.profileImage}',
+                    width: 80,
+                    height: 80,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 70,
+                      height: 70,
+                      color: const Color(0xFFEEF2FF),
+                      child: const Icon(Icons.person, color: _primary),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          s.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isActive
-                                ? const Color(0xFFDCFCE7)
-                                : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            isActive ? 'Active' : 'Inactive',
-                            style: TextStyle(
-                              color: isActive
-                                  ? const Color(0xFF16A34A)
-                                  : const Color(0xFF64748B),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            s.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                              color: Color(0xFF0F172A),
                             ),
                           ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isActive
+                                  ? const Color(0xFFDCFCE7)
+                                  : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              isActive ? 'Active' : 'Inactive',
+                              style: TextStyle(
+                                color: isActive
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFF64748B),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Roll: ${s.rollNumber} | Dept: ${s.department}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // Stats Row
+            Row(
+              children: [
+                _statItem(
+                  'SUBMITTED',
+                  s.submitted,
+                  const Color(0xFFF8FAFC),
+                  const Color(0xFF5145FF),
+                ),
+                const SizedBox(width: 12),
+                _statItem(
+                  'APPROVED',
+                  s.approved,
+                  const Color(0xFFF5F3FF),
+                  const Color(0xFF7C3AED),
+                ),
+                const SizedBox(width: 12),
+                _statItem(
+                  'PENDING',
+                  s.pending,
+                  const Color(0xFFFFF7ED),
+                  const Color(0xFFD97706),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // Buttons Row
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AdminStudentCertificatesScreen(
+                            studentId: s.id,
+                            studentName: s.name,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.military_tech_outlined, size: 18),
+                    label: const Text(
+                      'View Certificates',
+                      style: TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 4),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showAssignMentorDialog(s),
+                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+                    label: const Text(
+                      'Assign Mentor',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF0F172A),
+                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Disable/Enable toggle
+            GestureDetector(
+              onTap: () => _toggleStatus(s),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: Row(
+                  children: [
+                    Icon(
+                      isActive
+                          ? Icons.block_flipped
+                          : Icons.check_circle_outline,
+                      size: 16,
+                      color: isActive
+                          ? const Color(0xFFDC2626)
+                          : const Color(0xFF16A34A),
+                    ),
+                    const SizedBox(width: 8),
                     Text(
-                      'Roll: ${s.rollNumber} | Dept: ${s.department}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
+                      isActive ? 'Disable' : 'Enable',
+                      style: TextStyle(
+                        color: isActive
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFF16A34A),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // Stats Row
-          Row(
-            children: [
-              _statItem(
-                'SUBMITTED',
-                s.submitted,
-                const Color(0xFFF8FAFC),
-                const Color(0xFF5145FF),
-              ),
-              const SizedBox(width: 12),
-              _statItem(
-                'APPROVED',
-                s.approved,
-                const Color(0xFFF5F3FF),
-                const Color(0xFF7C3AED),
-              ),
-              const SizedBox(width: 12),
-              _statItem(
-                'PENDING',
-                s.pending,
-                const Color(0xFFFFF7ED),
-                const Color(0xFFD97706),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // Buttons Row
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    // Navigate to certificates screen but filtered for this student if possible, or just view all for now
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AdminCertificatesScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.military_tech_outlined, size: 18),
-                  label: const Text(
-                    'View Certificates',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _showAssignMentorDialog(s),
-                  icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-                  label: const Text(
-                    'Assign Mentor',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0F172A),
-                    side: const BorderSide(color: Color(0xFFE2E8F0)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Disable/Enable toggle
-          GestureDetector(
-            onTap: () => _toggleStatus(s),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 8.0),
-              child: Row(
-                children: [
-                  Icon(
-                    isActive ? Icons.block_flipped : Icons.check_circle_outline,
-                    size: 16,
-                    color: isActive
-                        ? const Color(0xFFDC2626)
-                        : const Color(0xFF16A34A),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    isActive ? 'Disable' : 'Enable',
-                    style: TextStyle(
-                      color: isActive
-                          ? const Color(0xFFDC2626)
-                          : const Color(0xFF16A34A),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

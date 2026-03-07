@@ -181,6 +181,56 @@ class AdminApiService {
     }
   }
 
+  Future<AdminStudentDetail> fetchStudentDetail(int studentId) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/student/$studentId'),
+            headers: await _headers(),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return AdminStudentDetail.fromJson(data['student']);
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
+      }
+      throw Exception('Failed to load student details');
+    } on SocketException {
+      throw Exception('Network error loading student details.');
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
+    }
+  }
+
+  Future<AdminCertificate> fetchCertificateDetail(int certId) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/certificate/$certId'),
+            headers: await _headers(),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return AdminCertificate.fromJson(data['certificate']);
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        AuthHelper.handleUnauthorized();
+        throw UnauthorizedException();
+      }
+      throw Exception('Failed to load certificate details');
+    } on SocketException {
+      throw Exception('Network error loading certificate details.');
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      rethrow;
+    }
+  }
+
   // ── Mentors ───────────────────────────────────────────────────────────────
 
   Future<List<AdminMentor>> fetchMentors({
@@ -516,6 +566,7 @@ class AdminCertificate {
   final String eventDate;
   final String participationType;
   final String certificateType;
+  final String certificateFile;
   final String status;
   final int points;
   final String mentorRemark;
@@ -530,6 +581,7 @@ class AdminCertificate {
     required this.eventDate,
     required this.participationType,
     required this.certificateType,
+    required this.certificateFile,
     required this.status,
     required this.points,
     required this.mentorRemark,
@@ -545,10 +597,64 @@ class AdminCertificate {
     eventDate: j['event_date']?.toString() ?? '',
     participationType: j['participation_type']?.toString() ?? '',
     certificateType: j['certificate_type']?.toString() ?? '',
+    certificateFile: j['certificate_file']?.toString() ?? '',
     status: j['status']?.toString() ?? 'pending',
     points: (j['points'] as num?)?.toInt() ?? 0,
     mentorRemark: j['mentor_remark']?.toString() ?? '',
   );
+}
+
+class AdminStudentDetail {
+  final int id;
+  final String name;
+  final String email;
+  final String rollNumber;
+  final String department;
+  final String status;
+  final String profileImage;
+  final String mentorName;
+  final int mentorId;
+  final int submitted;
+  final int approved;
+  final int pending;
+  final int rejected;
+  final int totalPoints;
+
+  const AdminStudentDetail({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.rollNumber,
+    required this.department,
+    required this.status,
+    required this.profileImage,
+    required this.mentorName,
+    required this.mentorId,
+    required this.submitted,
+    required this.approved,
+    required this.pending,
+    required this.rejected,
+    required this.totalPoints,
+  });
+
+  factory AdminStudentDetail.fromJson(Map<String, dynamic> j) =>
+      AdminStudentDetail(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        name: j['name']?.toString() ?? '',
+        email: j['email']?.toString() ?? '',
+        rollNumber: j['roll_number']?.toString() ?? '',
+        department: j['department']?.toString() ?? '',
+        status: j['status']?.toString() ?? 'active',
+        profileImage:
+            j['profile_image']?.toString() ?? '/uploads/profile/default.png',
+        mentorName: j['mentor_name']?.toString() ?? 'Not Assigned',
+        mentorId: (j['mentor_id'] as num?)?.toInt() ?? 0,
+        submitted: (j['submitted'] as num?)?.toInt() ?? 0,
+        approved: (j['approved'] as num?)?.toInt() ?? 0,
+        pending: (j['pending'] as num?)?.toInt() ?? 0,
+        rejected: (j['rejected'] as num?)?.toInt() ?? 0,
+        totalPoints: (j['total_points'] as num?)?.toInt() ?? 0,
+      );
 }
 
 class AdminMonthlyUpload {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/admin_api_service.dart';
 import '../../config/api_config.dart';
+import 'admin_mentor_students_screen.dart';
 
 class AdminMentorsScreen extends StatefulWidget {
   const AdminMentorsScreen({super.key});
@@ -463,7 +464,17 @@ class _AdminMentorsScreenState extends State<AdminMentorsScreen> {
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminMentorStudentsScreen(
+                          mentorId: m.id,
+                          mentorName: m.name,
+                        ),
+                      ),
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _primary,
                     foregroundColor: Colors.white,
